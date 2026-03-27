@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:21398; script-src 'self' http://127.0.0.1:21398; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://127.0.0.1:21398; connect-src http://127.0.0.1:21398;">
+  <title>Live2D Claude Pet</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="message-bubble" class="message-bubble hidden"></div>
+  <canvas id="live2d-canvas"></canvas>
+
+  <script src="lib/live2dcubismcore.min.js"></script>
+  <script src="lib/pixi.min.js"></script>
+  <script src="lib/pixi-live2d-display.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "live2d-claude-pet",
+  "version": "1.0.0",
+  "description": "A Live2D desktop pet that shows notifications when Claude Code completes tasks",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac"
+  },
+  "keywords": [
+    "live2d",
+    "claude-code",
+    "desktop-pet",
+    "electron",
+    "notification"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}
