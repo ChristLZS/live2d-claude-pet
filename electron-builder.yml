@@ -14,8 +14,7 @@ mac:
     - dmg
     - zip
   darkModeSupport: true
-  extendInfo:
-    LSUIElement: true
+  # Show in Dock so users can quit/reopen easily
 dmg:
   title: Live2D Claude Pet
   contents:

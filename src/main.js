@@ -251,10 +251,33 @@ ipcMain.on('claude-prompt', (_event, prompt) => {
   });
 });
 
-// Hide from Dock on macOS (agent app - tray only)
-if (app.dock) app.dock.hide();
-
 app.whenReady().then(() => {
+  // Force show Dock icon on macOS
+  if (app.dock) app.dock.show();
+
+  // Set application menu with Quit shortcut (Cmd+Q)
+  const appMenu = Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { label: 'About Live2D Claude Pet', role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Hide Pet',
+          accelerator: 'CmdOrCtrl+H',
+          click: () => { if (mainWindow) mainWindow.hide(); },
+        },
+        { type: 'separator' },
+        {
+          label: 'Quit',
+          accelerator: 'CmdOrCtrl+Q',
+          click: () => { isQuitting = true; app.quit(); },
+        },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(appMenu);
+
   startHttpServer(() => {
     createWindow();
     createTray();
