@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, screen, Tray, Menu } = require('electron');
+const { spawn } = require('child_process');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -33,6 +34,14 @@ function createWindow() {
   });
 
   mainWindow.loadURL(`http://127.0.0.1:${PORT}/app/index.html`);
+
+  // Capture renderer console for debugging
+  mainWindow.webContents.on('console-message', (_event, level, message, _line, sourceId) => {
+    if (!sourceId.includes('devtools://')) {
+      const prefix = ['LOG', 'WARN', 'ERR'][level] || 'UNK';
+      console.log(`[RENDERER ${prefix}] ${message}`);
+    }
+  });
 
   // Default: ignore all mouse events, renderer will toggle per-pixel
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
@@ -161,6 +170,58 @@ const dragPollInterval = setInterval(pollDrag, 16); // ~60fps
 
 ipcMain.on('stop-drag', () => {
   dragging = false;
+});
+
+// Claude -p chat integration
+let claudeProcess = null;
+
+ipcMain.on('claude-prompt', (_event, prompt) => {
+  if (!mainWindow) return;
+
+  // Kill any running process
+  if (claudeProcess) {
+    claudeProcess.kill();
+    claudeProcess = null;
+  }
+
+  // Spawn claude -p with the user's prompt
+  // Use shell: true so it picks up PATH from user's shell profile
+  claudeProcess = spawn('claude', ['-p', prompt], {
+    shell: true,
+    env: { ...process.env, PATH: process.env.PATH + ':/usr/local/bin:/opt/homebrew/bin' },
+  });
+
+  let output = '';
+
+  claudeProcess.stdout.on('data', (data) => {
+    const chunk = data.toString();
+    output += chunk;
+    if (mainWindow) {
+      mainWindow.webContents.send('claude-chunk', { chunk, partial: output });
+    }
+  });
+
+  claudeProcess.stderr.on('data', (data) => {
+    console.error('[claude stderr]', data.toString());
+  });
+
+  claudeProcess.on('close', (code) => {
+    claudeProcess = null;
+    if (mainWindow) {
+      if (code === 0) {
+        mainWindow.webContents.send('claude-done', { output: output.trim() });
+      } else {
+        mainWindow.webContents.send('claude-error', { error: `claude exited with code ${code}`, output: output.trim() });
+      }
+    }
+  });
+
+  claudeProcess.on('error', (err) => {
+    claudeProcess = null;
+    if (mainWindow) {
+      mainWindow.webContents.send('claude-error', { error: err.message });
+    }
+  });
 });
 
 app.whenReady().then(() => {

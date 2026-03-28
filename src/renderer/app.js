@@ -26,7 +26,6 @@ const MODELS = [
   { name: 'AN94 (少前)',         path: '/models/gf_an94_2404/normal.model3.json',           scale: 0.35 },
 ];
 
-// Derive base URL from the current page origin to avoid hardcoding the port twice
 const BASE_URL = window.location.origin;
 let currentModelIndex = 0;
 let currentModel = null;
@@ -101,13 +100,11 @@ canvas.addEventListener('wheel', (e) => {
   if (isLoading) return;
 
   if (e.ctrlKey || e.metaKey) {
-    // Ctrl/Cmd + scroll = zoom
     if (!currentModel) return;
     const delta = e.deltaY > 0 ? -0.03 : 0.03;
     currentScale = Math.max(0.1, Math.min(1.0, currentScale + delta));
     currentModel.scale.set(currentScale);
   } else {
-    // Normal scroll = switch model
     let next = currentModelIndex + (e.deltaY > 0 ? 1 : -1);
     if (next < 0) next = MODELS.length - 1;
     if (next >= MODELS.length) next = 0;
@@ -132,6 +129,12 @@ function isPixelOpaque(e) {
 let isDragging = false;
 
 document.addEventListener('mousemove', (e) => {
+  // Don't change ignore state when hovering over UI elements (input, bubble)
+  const onUI = e.target.closest('.chat-input-wrap') || e.target.closest('.message-bubble.scrollable');
+  if (onUI) {
+    window.electronAPI.setIgnoreMouse(false);
+    return;
+  }
   if (isDragging) {
     window.electronAPI.setIgnoreMouse(false);
     return;
@@ -154,27 +157,24 @@ document.addEventListener('mouseup', () => {
   }
 });
 
-// Message bubble - dynamically positioned above model's head
+// ============ Message bubble ============
 const messageBubble = document.getElementById('message-bubble');
 let messageTimer = null;
 let bubbleVisible = false;
+let bubblePersistent = false; // true when showing chat response (no auto-hide)
 
 function updateBubblePosition() {
   if (!bubbleVisible || !currentModel) return;
   const bounds = currentModel.getBounds();
-  // CSS pixel coordinates: canvas might be scaled via CSS
   const rect = canvas.getBoundingClientRect();
   const scaleX = rect.width / CANVAS_WIDTH;
   const scaleY = rect.height / CANVAS_HEIGHT;
   const topY = bounds.y * scaleY;
-  // Position bubble above model's top edge with some padding
-  messageBubble.style.top = Math.max(5, topY - 50) + 'px';
-  // Center horizontally on model
+  messageBubble.style.top = Math.max(5, topY - 60) + 'px';
   const centerX = (bounds.x + bounds.width / 2) * scaleX;
   messageBubble.style.left = centerX + 'px';
 }
 
-// Update bubble position every frame while visible
 app.ticker.add(() => {
   if (bubbleVisible) updateBubblePosition();
 });
@@ -182,18 +182,106 @@ app.ticker.add(() => {
 function showMessage(text, duration = 8000) {
   if (messageTimer) clearTimeout(messageTimer);
   messageBubble.textContent = text;
-  messageBubble.classList.remove('hidden');
+  messageBubble.classList.remove('hidden', 'scrollable');
   messageBubble.classList.add('visible');
   bubbleVisible = true;
+  bubblePersistent = false;
   updateBubblePosition();
   messageTimer = setTimeout(() => {
-    messageBubble.classList.remove('visible');
-    messageBubble.classList.add('hidden');
-    bubbleVisible = false;
-    messageTimer = null;
+    hideBubble();
   }, duration);
 }
 
+function showBubbleText(text, persistent = false) {
+  if (messageTimer) clearTimeout(messageTimer);
+  messageBubble.textContent = text;
+  messageBubble.classList.remove('hidden');
+  messageBubble.classList.add('visible');
+  if (persistent) {
+    messageBubble.classList.add('scrollable');
+  }
+  bubbleVisible = true;
+  bubblePersistent = persistent;
+  updateBubblePosition();
+  // Auto-scroll to bottom
+  messageBubble.scrollTop = messageBubble.scrollHeight;
+}
+
+function showThinking() {
+  if (messageTimer) clearTimeout(messageTimer);
+  messageBubble.innerHTML = '<span class="thinking-dots">Thinking</span>';
+  messageBubble.classList.remove('hidden', 'scrollable');
+  messageBubble.classList.add('visible');
+  bubbleVisible = true;
+  bubblePersistent = true;
+  updateBubblePosition();
+}
+
+function hideBubble() {
+  messageBubble.classList.remove('visible', 'scrollable');
+  messageBubble.classList.add('hidden');
+  bubbleVisible = false;
+  bubblePersistent = false;
+  messageTimer = null;
+}
+
+// ============ Chat input ============
+const chatInput = document.getElementById('chat-input');
+let isChatting = false;
+
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const prompt = chatInput.value.trim();
+    if (!prompt || isChatting) return;
+
+    isChatting = true;
+    chatInput.value = '';
+    chatInput.disabled = true;
+
+    // Show thinking state
+    showThinking();
+
+    // Send to claude -p
+    window.electronAPI.sendPrompt(prompt);
+  }
+  // Escape to hide bubble
+  if (e.key === 'Escape') {
+    hideBubble();
+    chatInput.blur();
+  }
+});
+
+// Streaming response chunks
+window.electronAPI.onClaudeChunk((data) => {
+  if (data.partial) {
+    showBubbleText(data.partial, true);
+  }
+});
+
+// Done
+window.electronAPI.onClaudeDone((data) => {
+  isChatting = false;
+  chatInput.disabled = false;
+  chatInput.focus();
+  if (data.output) {
+    showBubbleText(data.output, true);
+    // Auto-hide after 30s for long responses
+    messageTimer = setTimeout(() => {
+      hideBubble();
+    }, 30000);
+  }
+});
+
+// Error
+window.electronAPI.onClaudeError((data) => {
+  isChatting = false;
+  chatInput.disabled = false;
+  chatInput.focus();
+  showMessage(data.error || 'Claude error', 5000);
+});
+
+// External notification messages (from HTTP API / hook)
 window.electronAPI.onShowMessage((data) => {
   if (!data || typeof data.text !== 'string') return;
   const duration = typeof data.duration === 'number' && data.duration > 0 ? data.duration : 8000;
