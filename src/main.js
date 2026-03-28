@@ -10,6 +10,7 @@ const PORT_FILE = path.join(os.homedir(), '.live2d-pet', 'port');
 
 let mainWindow = null;
 let tray = null;
+let isQuitting = false;
 
 function createWindow() {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
@@ -47,6 +48,14 @@ function createWindow() {
   mainWindow.setIgnoreMouseEvents(true, { forward: true });
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
+  // Hide instead of close (keep tray alive), unless quitting
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -56,9 +65,14 @@ function createTray() {
   tray = new Tray(path.join(__dirname, '..', 'assets', 'tray-icon.png'));
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Show Pet',
+      label: 'Show/Hide Pet',
       click: () => {
-        if (mainWindow) mainWindow.show();
+        if (!mainWindow) return;
+        if (mainWindow.isVisible()) {
+          mainWindow.hide();
+        } else {
+          mainWindow.show();
+        }
       },
     },
     {
@@ -75,11 +89,24 @@ function createTray() {
     { type: 'separator' },
     {
       label: 'Quit',
-      click: () => app.quit(),
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
     },
   ]);
   tray.setToolTip('Live2D Claude Pet');
   tray.setContextMenu(contextMenu);
+
+  // Click tray icon to toggle visibility
+  tray.on('click', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+    }
+  });
 }
 
 function startHttpServer(callback) {
@@ -224,6 +251,9 @@ ipcMain.on('claude-prompt', (_event, prompt) => {
   });
 });
 
+// Hide from Dock on macOS (agent app - tray only)
+if (app.dock) app.dock.hide();
+
 app.whenReady().then(() => {
   startHttpServer(() => {
     createWindow();
@@ -231,12 +261,17 @@ app.whenReady().then(() => {
   });
 });
 
+// On macOS, don't quit when all windows closed (tray keeps running)
 app.on('window-all-closed', () => {
-  cleanupPortFile();
-  app.quit();
+  // no-op on macOS, tray stays alive
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
+  if (claudeProcess) {
+    claudeProcess.kill();
+    claudeProcess = null;
+  }
   clearInterval(dragPollInterval);
   cleanupPortFile();
 });

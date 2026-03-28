@@ -1,0 +1,27 @@
+appId: com.live2d.claude-pet
+productName: Live2D Claude Pet
+directories:
+  output: dist
+files:
+  - src/**/*
+  - assets/**/*
+  - package.json
+asar: true
+mac:
+  category: public.app-category.utilities
+  icon: assets/icon.icns
+  target:
+    - dmg
+    - zip
+  darkModeSupport: true
+  extendInfo:
+    LSUIElement: true
+dmg:
+  title: Live2D Claude Pet
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
